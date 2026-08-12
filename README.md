@@ -208,6 +208,9 @@ Ensure these are set in your `.env` file:
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_API_KEY=your-api-key
 AZURE_OPENAI_DEPLOYMENT=gpt-4o
+
+# Keep query result rows local (default). Cloud LLM used for intent + SQL only.
+LOCAL_INTERPRETATION=true
 ```
 
 ### Programmatic Usage

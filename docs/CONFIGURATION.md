@@ -54,11 +54,39 @@ data_agents:
         answer: "There are 1,234 users."
 ```
 
+## Local Interpretation (Privacy)
+
+By default the agent keeps **query result rows local** (DATA-ARC-style). The cloud LLM is used only for:
+
+1. Intent detection / routing  
+2. Query rewrite  
+3. SQL generation (schema + question — not result sets)
+
+After SQL runs against your database, the natural-language summary and simple charts are built **in-process**. Result rows are **not** sent back to Azure OpenAI.
+
+```bash
+# Default (recommended for privacy)
+LOCAL_INTERPRETATION=true
+
+# Opt in to cloud narrative analysis / LLM matplotlib codegen
+# Warning: sends query result rows to the model
+LOCAL_INTERPRETATION=false
+```
+
+| Setting | Response | Visualization |
+|---------|----------|---------------|
+| `true` (default) | Local markdown summary (counts + sample table) | Local matplotlib heuristics (no row upload) |
+| `false` | Cloud LLM reads full results | LLM generates code; executor runs it (rows go to the model) |
+
+**Note:** Even with local interpretation, the cloud still receives the user question, schema/metadata (and any sample rows embedded in YAML), and the generated SQL. That is intentional for NL2SQL quality; only **result sets** stay local.
+
 ## Code Interpreter (Data Visualization)
 
-The data agent can generate charts and visualizations from query results. When the LLM detects visualization intent (e.g., "show me a chart", "visualize", "plot"), it generates matplotlib code to create charts.
+The data agent can generate charts from query results when visualization intent is detected (e.g., "show me a chart", "visualize", "plot").
 
-Visualization is **automatically enabled** - no YAML configuration needed. The executor is selected based on environment:
+With `LOCAL_INTERPRETATION=true` (default), charts are built **locally** with simple heuristics — no cloud call on the data.
+
+With `LOCAL_INTERPRETATION=false`, the LLM generates matplotlib code. The executor is selected based on environment:
 
 | Environment | Executor | Use Case |
 |-------------|----------|----------|
@@ -66,7 +94,7 @@ Visualization is **automatically enabled** - no YAML configuration needed. The e
 | Not set | Local executor | Development (no sandboxing) |
 
 ```bash
-# Production: Set the Azure Sessions endpoint
+# Production cloud-codegen path: set Azure Sessions endpoint
 export AZURE_SESSIONS_POOL_ENDPOINT="https://eastus.dynamicsessions.io/subscriptions/.../sessionPools/..."
 ```
 
@@ -149,6 +177,8 @@ data_agents:
 | `AZURE_OPENAI_ENDPOINT` | Endpoint URL | Yes |
 | `AZURE_OPENAI_API_KEY` | API key | Yes |
 | `AZURE_OPENAI_DEPLOYMENT` | Model deployment | No (default: gpt-4o) |
+| **Privacy** | | |
+| `LOCAL_INTERPRETATION` | Keep query results local (`true`/`false`). Default: `true` | No |
 | **PostgreSQL** | | |
 | `POSTGRES_HOST` | Host | If using |
 | `POSTGRES_PORT` | Port | If using |

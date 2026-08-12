@@ -277,6 +277,33 @@ Datasource = (
 )
 
 
+class PrivacySettings(BaseSettings):
+    """Privacy settings for cloud vs local data handling.
+
+    When local_interpretation is enabled (default), query result rows never leave
+    the process for LLM calls. Only intent detection, query rewrite, and SQL
+    generation use the cloud LLM (with schema/metadata, not result sets).
+
+    Attributes:
+        local_interpretation: If True, summarize/visualize results locally without
+            sending row data to a cloud LLM. Matches DATA-ARC LOCAL_INTERPRETATION.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+    )
+
+    local_interpretation: bool = Field(
+        default=True,
+        description=(
+            "Keep query results local: no result rows sent to cloud LLMs for "
+            "response generation or visualization code generation. "
+            "Set via env LOCAL_INTERPRETATION=true|false."
+        ),
+    )
+
+
 class VisualizationSettings(BaseSettings):
     """Settings for code execution/visualization.
 

@@ -1,7 +1,7 @@
 """Response generation node for LangGraph pipeline.
 
 This module provides the ResponseNode class that generates natural language
-responses from query results.
+responses from query results — either via cloud LLM or local interpretation.
 """
 
 import logging
@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING, Any
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from data_agent.config import DataAgentConfig
+from data_agent.config import DataAgentConfig, PrivacySettings
 from data_agent.models.outputs import ResponseGeneratorOutput
+from data_agent.utils.local_interpretation import local_interpret_results
 from data_agent.utils.message_utils import get_recent_history
 
 if TYPE_CHECKING:
@@ -25,11 +26,13 @@ logger = logging.getLogger(__name__)
 class ResponseNode:
     """Response generation node.
 
-    Generates natural language responses from query results using an LLM.
+    Generates natural language responses from query results using an LLM,
+    or a local deterministic summary when LOCAL_INTERPRETATION is enabled.
 
     Args:
         llm: Language model for response generation.
         config: Data agent configuration with optional response prompt.
+        local_interpretation: Override privacy setting (None = read from env).
 
     Example:
         ```python
@@ -38,16 +41,26 @@ class ResponseNode:
         ```
     """
 
-    def __init__(self, llm: BaseChatModel, config: DataAgentConfig) -> None:
+    def __init__(
+        self,
+        llm: BaseChatModel,
+        config: DataAgentConfig,
+        local_interpretation: bool | None = None,
+    ) -> None:
         """Initialize the response node.
 
         Args:
             llm: Language model for response generation.
             config: Data agent configuration with response prompt.
+            local_interpretation: If set, overrides PrivacySettings / env.
         """
         self._llm = llm
         self._config = config
         self._response_llm = llm.with_structured_output(ResponseGeneratorOutput)
+        if local_interpretation is None:
+            self._local_interpretation = PrivacySettings().local_interpretation
+        else:
+            self._local_interpretation = local_interpretation
 
     def generate_response(self, state: "AgentState") -> dict[str, Any]:
         """Generate natural language response from query results.
@@ -58,17 +71,32 @@ class ResponseNode:
         Returns:
             State update with final response and messages.
         """
-        prompt = self._config.response_prompt or DEFAULT_RESPONSE_PROMPT
-
         question = state["question"]
         sql = state.get("generated_sql", "")
         result = state.get("result", {})
+
+        if self._local_interpretation:
+            response = local_interpret_results(question, result, sql=sql or "")
+            logger.debug("Local interpretation generated (%d chars)", len(response))
+            return {
+                "final_response": response,
+                "messages": [
+                    AIMessage(content=response, name="response_generator_local")
+                ],
+            }
+
+        prompt = self._config.response_prompt or DEFAULT_RESPONSE_PROMPT
 
         # Check if visualization was generated - if so, modify the prompt
         # to avoid generating ASCII charts or code snippets
         visualization_image = state.get("visualization_image")
         if visualization_image:
-            prompt += "\n\nIMPORTANT: A visualization/chart has already been generated and will be displayed separately. Do NOT create ASCII charts, text-based charts, or matplotlib code snippets. Focus only on providing insights and analysis of the data."
+            prompt += (
+                "\n\nIMPORTANT: A visualization/chart has already been generated and "
+                "will be displayed separately. Do NOT create ASCII charts, text-based "
+                "charts, or matplotlib code snippets. Focus only on providing insights "
+                "and analysis of the data."
+            )
 
         history = get_recent_history(state.get("messages", []), max_messages=4)
 
@@ -82,7 +110,7 @@ class ResponseNode:
             ),
         ]
 
-        logger.debug("Generating response for question: %s", question[:100])
+        logger.debug("Generating cloud LLM response for question: %s", question[:100])
         response_result = self._response_llm.invoke(messages)
         response = (
             response_result.response

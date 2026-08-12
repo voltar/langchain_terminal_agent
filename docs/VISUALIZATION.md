@@ -4,12 +4,19 @@ This guide covers the code interpreter feature for generating charts and visuali
 
 ## Overview
 
-When enabled, the data agent can detect visualization intent in user queries (e.g., "show me a chart", "plot the data") and generate matplotlib code to create charts. The code runs in a secure, isolated environment using Azure Container Apps Dynamic Sessions.
+When visualization intent is detected (e.g., "show me a chart", "plot the data"), the agent creates charts from query results.
 
-**Key features:**
+**Two modes** (controlled by `LOCAL_INTERPRETATION`):
+
+| Mode | Behavior |
+|------|----------|
+| **Local** (default, `LOCAL_INTERPRETATION=true`) | In-process matplotlib heuristics. **Result rows never go to a cloud LLM.** |
+| **Cloud codegen** (`LOCAL_INTERPRETATION=false`) | LLM generates matplotlib code; Azure Sessions or local `exec` runs it. Result rows are sent to the model. |
+
+**Cloud-codegen features:**
 - Automatic detection of visualization requests
 - LLM-generated matplotlib code
-- Secure sandboxed execution with Hyper-V isolation
+- Secure sandboxed execution with Hyper-V isolation (Azure Sessions)
 - Native image capture (no file storage)
 - Support for bar charts, line charts, pie charts, scatter plots, and more
 
@@ -40,29 +47,35 @@ https://eastus.dynamicsessions.io/subscriptions/<sub>/resourceGroups/<rg>/sessio
 
 ## Configuration
 
-### Environment Variable
-
-Set the pool endpoint:
+### Local interpretation (default)
 
 ```bash
+LOCAL_INTERPRETATION=true
+```
+
+No Azure Sessions pool is required for charts in this mode. Simple bar/line/histogram charts are built from structured result columns.
+
+### Cloud codegen path
+
+```bash
+LOCAL_INTERPRETATION=false
 export AZURE_SESSIONS_POOL_ENDPOINT="https://eastus.dynamicsessions.io/subscriptions/.../sessionPools/..."
 ```
 
 Or in `.env`:
 ```bash
+LOCAL_INTERPRETATION=false
 AZURE_SESSIONS_POOL_ENDPOINT=https://eastus.dynamicsessions.io/subscriptions/.../sessionPools/...
 ```
 
-### Executor Selection
-
-The system automatically selects the executor based on environment:
+### Executor Selection (cloud codegen only)
 
 | `AZURE_SESSIONS_POOL_ENDPOINT` | Executor | Use Case |
 |-------------------------------|----------|----------|
 | Set | Azure Sessions | Production (secure, Hyper-V isolation) |
 | Not set | Local Python REPL | Development (fast, no sandboxing) |
 
-**No YAML configuration needed** - visualization is always enabled, with the executor determined by environment.
+**No YAML configuration needed** — visualization intent is always detected; how charts are built depends on `LOCAL_INTERPRETATION` and the executor env.
 
 ### System Prompt
 
